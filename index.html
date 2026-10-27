@@ -113,7 +113,15 @@ td:has(> .cell:focus){outline:2px solid var(--sel);outline-offset:-2px}
 input[type="date"].cell{min-width:118px}
 .neg{color:var(--neg)!important}
 .factcell{display:flex;align-items:center;justify-content:flex-end;gap:8px}
-.factcell b{font-weight:700;min-width:44px;text-align:right}
+.fv{border:0;background:none;font-weight:700;min-width:44px;text-align:right;padding:4px 6px;border-radius:4px;white-space:nowrap}
+.fv:hover,.fv.open{background:var(--blue2);color:var(--blue-ink)}
+.flist td{background:var(--blue2);padding:0!important;height:auto!important}
+.fl{padding:10px 14px;display:grid;gap:6px;font-size:13px}
+.fl-h{font-weight:700;color:var(--blue-ink)}
+.fl-r{display:grid;grid-template-columns:90px 110px minmax(0,1fr) 30px;align-items:center;gap:8px;background:var(--sheet);border:1px solid var(--grid);border-radius:4px;padding:2px 4px 2px 10px}
+.fl-r b{text-align:right}
+.fl-n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fl-a{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
 .qadd{width:82px;border:1px dashed var(--grid);background:var(--head);border-radius:4px;padding:4px 6px;text-align:right;font-size:12.5px;outline:none;color:var(--ink)}
 .qadd:focus{border:1px solid var(--sel);background:var(--sheet)}
 .muted{color:var(--muted)}
@@ -395,7 +403,7 @@ const SHEETS = [
 ];
 const ui = {
   sheet: SHEETS.some(s => s.id === location.hash.slice(1)) ? location.hash.slice(1) : "obzor",
-  y: n0.getFullYear(), m: n0.getMonth(), catFilter: "Все", confirm: null
+  y: n0.getFullYear(), m: n0.getMonth(), catFilter: "Все", confirm: null, openFact: null
 };
 
 /* ───────── render ───────── */
@@ -574,6 +582,15 @@ function budMonth(mk, create){
   if (create){ state.budget[mk] = budDraft[mk]; delete budDraft[mk]; return state.budget[mk]; }
   return budDraft[mk];
 }
+function factList(mk, ck, x){
+  const list = state.tx.filter(t => t.date.startsWith(mk) && t.cat === ck && t.sub === x.name).sort((a, z) => z.date.localeCompare(a.date));
+  const sure = ui.confirm === "fc" + x.id;
+  return `<tr class="flist"><td colspan="4"><div class="fl">
+    <div class="fl-h">Записи «${esc(x.name)}» за ${MONTHS[ui.m]}${list.length ? ` · всего ${fmt(list.reduce((a, t) => a + t.amount, 0))} ₽` : ""}</div>
+    ${list.length ? list.map(t => `<div class="fl-r"><span class="muted">${fmtDate(t.date)}</span><b>${fmt(t.amount)} ₽</b><span class="muted fl-n">${esc(t.note)}</span><button class="del" data-act="txdel" data-id="${t.id}" aria-label="Удалить запись ${fmt(t.amount)} ₽">×</button></div>`).join("") : `<div class="muted">Записей нет</div>`}
+    <div class="fl-a">${list.length ? (sure ? `<span class="neg">Удалить все записи?</span><button class="btn" data-act="factclear" data-c="${ck}" data-id="${x.id}">Да, обнулить</button><button class="btn" data-act="cancel">Нет</button>` : `<button class="btn" data-act="ask" data-id="fc${x.id}">Обнулить</button>`) : ""}<button class="btn" data-act="factopen" data-id="${x.id}">Закрыть</button></div>
+  </div></td></tr>`;
+}
 function factOf(mk, cat, sub){ return state.tx.filter(x => x.date.startsWith(mk) && x.cat === cat && (sub === undefined || x.sub === sub)).reduce((a, x) => a + x.amount, 0); }
 function vBudget(){
   const mk = mkey(ui.y, ui.m), b = budMonth(mk, false);
@@ -589,8 +606,8 @@ function vBudget(){
       ${items.map(x => { const f = factOf(mk, c.k, x.name); const conf = ui.confirm === "b" + x.id; return `<tr>
         <td><input class="cell" id="bn-${x.id}" data-bf="${c.k}|${x.id}|name" value="${esc(x.name)}" maxlength="40" aria-label="Подкатегория"></td>
         <td class="r" style="width:110px"><input class="cell num" id="bb-${x.id}" data-bf="${c.k}|${x.id}|b" inputmode="decimal" value="${x.b ? fmt(x.b) : ""}" placeholder="0" aria-label="Бюджет"></td>
-        <td class="r" style="width:170px"><div class="factcell"><b class="${c.k !== "income" && x.b && f > x.b ? "neg" : ""}">${f ? fmt(f) : "0"}</b><input class="qadd" id="qa-${x.id}" data-qadd="${c.k}|${esc(x.name)}" inputmode="decimal" placeholder="+ сумма" aria-label="Добавить сумму к «${esc(x.name)}»"></div></td>
-        <td class="c" style="width:${conf ? 100 : 34}px">${conf ? `<button class="btn" style="padding:2px 8px" data-act="bdel" data-c="${c.k}" data-id="${x.id}">Удалить</button>` : `<button class="del" data-act="ask" data-id="b${x.id}" aria-label="Удалить">×</button>`}</td></tr>`; }).join("")}
+        <td class="r" style="width:170px"><div class="factcell"><button class="fv ${c.k !== "income" && x.b && f > x.b ? "neg" : ""} ${ui.openFact === x.id ? "open" : ""}" data-act="factopen" data-id="${x.id}" title="Показать и исправить записи" aria-expanded="${ui.openFact === x.id}">${f ? fmt(f) : "0"} ✎</button><input class="qadd" id="qa-${x.id}" data-qadd="${c.k}|${esc(x.name)}" inputmode="decimal" placeholder="+ сумма" aria-label="Добавить сумму к «${esc(x.name)}»"></div></td>
+        <td class="c" style="width:${conf ? 100 : 34}px">${conf ? `<button class="btn" style="padding:2px 8px" data-act="bdel" data-c="${c.k}" data-id="${x.id}">Удалить</button>` : `<button class="del" data-act="ask" data-id="b${x.id}" aria-label="Удалить">×</button>`}</td></tr>${ui.openFact === x.id ? factList(mk, c.k, x) : ""}`; }).join("")}
       ${other ? `<tr><td class="muted">Без подкатегории</td><td></td><td class="r">${fmt(other)}</td><td></td></tr>` : ""}
       <tr><td colspan="4"><input class="cell" id="new-b-${c.k}" data-new="bud|${c.k}" placeholder="+ Добавить подкатегорию" maxlength="40" aria-label="Новая подкатегория"></td></tr>
       </tbody></table></div></div>`;
@@ -672,6 +689,8 @@ document.addEventListener("click", e => {
     case "mdel": state.monthly = state.monthly.filter(x => x.id !== id); commit(); return;
     case "bdel": { const bm = budMonth(mkey(ui.y, ui.m), true); bm[b.dataset.c] = bm[b.dataset.c].filter(x => x.id !== id); commit(); return; }
     case "txdel": state.tx = state.tx.filter(x => x.id !== id); commit(); return;
+    case "factopen": ui.openFact = ui.openFact === id ? null : id; render(); return;
+    case "factclear": { const mk = mkey(ui.y, ui.m); const bm = budMonth(mk, false); const it = (bm[b.dataset.c] || []).find(x => x.id === id); if (it){ const n = state.tx.length; state.tx = state.tx.filter(t => !(t.date.startsWith(mk) && t.cat === b.dataset.c && t.sub === it.name)); toast("Обнулено: " + it.name); } ui.openFact = null; commit(); return; }
     case "txadd": {
       const amount = parseNum($("#nx-amount").value);
       if (!amount){ toast("Введи сумму"); $("#nx-amount").focus(); return; }
