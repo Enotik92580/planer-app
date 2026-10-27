@@ -112,6 +112,10 @@ td:has(> .cell:focus){outline:2px solid var(--sel);outline-offset:-2px}
 .num{text-align:right}
 input[type="date"].cell{min-width:118px}
 .neg{color:var(--neg)!important}
+.factcell{display:flex;align-items:center;justify-content:flex-end;gap:8px}
+.factcell b{font-weight:700;min-width:44px;text-align:right}
+.qadd{width:82px;border:1px dashed var(--grid);background:var(--head);border-radius:4px;padding:4px 6px;text-align:right;font-size:12.5px;outline:none;color:var(--ink)}
+.qadd:focus{border:1px solid var(--sel);background:var(--sheet)}
 .muted{color:var(--muted)}
 .del{border:0;background:none;color:var(--muted);width:26px;height:26px;border-radius:4px;font-size:17px;line-height:1}
 .del:hover{background:var(--pink2);color:var(--neg)}
@@ -581,11 +585,11 @@ function vBudget(){
     const named = new Set(items.map(x => x.name));
     const other = state.tx.filter(x => x.date.startsWith(mk) && x.cat === c.k && !named.has(x.sub)).reduce((a, x) => a + x.amount, 0);
     return `<div class="sheet"><div class="h ${c.k === "income" ? "blue" : "pink"}">${c.sec}</div>
-      <div class="scroll"><table class="t"><thead><tr><th${c.k === "income" ? "" : ' class="pink"'}>Подкатегория</th><th${c.k === "income" ? "" : ' class="pink"'}>Бюджет</th><th${c.k === "income" ? "" : ' class="pink"'}>Факт</th><th${c.k === "income" ? "" : ' class="pink"'}></th></tr></thead><tbody>
+      <div class="scroll"><table class="t"><thead><tr><th${c.k === "income" ? "" : ' class="pink"'}>Подкатегория</th><th${c.k === "income" ? "" : ' class="pink"'}>Бюджет</th><th${c.k === "income" ? "" : ' class="pink"'}>${c.k === "income" ? "Получено" : "Потрачено"}</th><th${c.k === "income" ? "" : ' class="pink"'}></th></tr></thead><tbody>
       ${items.map(x => { const f = factOf(mk, c.k, x.name); const conf = ui.confirm === "b" + x.id; return `<tr>
         <td><input class="cell" id="bn-${x.id}" data-bf="${c.k}|${x.id}|name" value="${esc(x.name)}" maxlength="40" aria-label="Подкатегория"></td>
         <td class="r" style="width:110px"><input class="cell num" id="bb-${x.id}" data-bf="${c.k}|${x.id}|b" inputmode="decimal" value="${x.b ? fmt(x.b) : ""}" placeholder="0" aria-label="Бюджет"></td>
-        <td class="r ${c.k !== "income" && x.b && f > x.b ? "neg" : ""}" style="width:100px">${f ? fmt(f) : "—"}</td>
+        <td class="r" style="width:170px"><div class="factcell"><b class="${c.k !== "income" && x.b && f > x.b ? "neg" : ""}">${f ? fmt(f) : "0"}</b><input class="qadd" id="qa-${x.id}" data-qadd="${c.k}|${esc(x.name)}" inputmode="decimal" placeholder="+ сумма" aria-label="Добавить сумму к «${esc(x.name)}»"></div></td>
         <td class="c" style="width:${conf ? 100 : 34}px">${conf ? `<button class="btn" style="padding:2px 8px" data-act="bdel" data-c="${c.k}" data-id="${x.id}">Удалить</button>` : `<button class="del" data-act="ask" data-id="b${x.id}" aria-label="Удалить">×</button>`}</td></tr>`; }).join("")}
       ${other ? `<tr><td class="muted">Без подкатегории</td><td></td><td class="r">${fmt(other)}</td><td></td></tr>` : ""}
       <tr><td colspan="4"><input class="cell" id="new-b-${c.k}" data-new="bud|${c.k}" placeholder="+ Добавить подкатегорию" maxlength="40" aria-label="Новая подкатегория"></td></tr>
@@ -594,7 +598,7 @@ function vBudget(){
   return `<div class="wrap">
     <div class="sheet">
       <div class="monthnav"><button data-act="mprev" aria-label="Предыдущий месяц">‹</button><b>${MONTHS[ui.m]} ${ui.y}</b><button data-act="mnext" aria-label="Следующий месяц">›</button></div>
-      <div class="h blue big">${MONTHS[ui.m]}</div><div class="h-sub" style="background:var(--blue);color:var(--blue-ink)">Факт считается сам из листа «Транзакции»</div>
+      <div class="h blue big">${MONTHS[ui.m]}</div><div class="h-sub" style="background:var(--blue);color:var(--blue-ink)">Бюджет — сколько планируешь. Потрачено/Получено — сколько вышло на самом деле: впиши сумму в поле «+ сумма» и нажми Enter. Все записи видны на листе «Транзакции».</div>
     </div>
     <div class="row2">
       <div class="sheet"><div class="h blue">Обзор</div>
@@ -704,6 +708,18 @@ document.addEventListener("change", e => {
     } else it.b = parseNum(el.value);
     save(); setTimeout(render, 0); return;
   }
+  if (ds.qadd){
+    const amount = parseNum(el.value); if (!amount) return;
+    const [ck, sub] = ds.qadd.split("|");
+    const t = todayStr(), mk = mkey(ui.y, ui.m);
+    const date = t.startsWith(mk) ? t : (mk < t.slice(0, 7) ? dkey(ui.y, ui.m, daysIn(ui.y, ui.m)) : dkey(ui.y, ui.m, 1));
+    budMonth(mk, true);
+    state.tx.push({id: uid(), date, cat: ck, sub, amount, note: ""});
+    const keep = el.id; save(); render();
+    toast("+" + fmt(amount) + " ₽ → " + sub);
+    const again = document.getElementById(keep); if (again) again.focus();
+    return;
+  }
   if (ds.new){
     const v = el.value.trim(); if (!v) return;
     if (ds.new === "task"){ const nt = {id: uid(), title: v, due: "", prio: "mid", cat: "Личное", done: false}; state.tasks.push(nt); save(); render(); const nx = document.getElementById("td-" + nt.id); if (nx) nx.focus(); return; }
@@ -717,7 +733,7 @@ document.addEventListener("change", e => {
 document.addEventListener("keydown", e => {
   if (e.key !== "Enter") return; const el = e.target;
   if (el.id && el.id.startsWith("nx-") && el.tagName === "INPUT"){ e.preventDefault(); document.querySelector('[data-act="txadd"]')?.click(); return; }
-  if (el.classList && el.classList.contains("cell") || (el.dataset && el.dataset.new)){ e.preventDefault(); el.blur(); }
+  if (el.classList && el.classList.contains("cell") || (el.dataset && (el.dataset.new || el.dataset.qadd))){ e.preventDefault(); el.blur(); }
 });
 window.addEventListener("hashchange", () => { const h = location.hash.slice(1); if (SHEETS.some(s => s.id === h) && h !== ui.sheet){ ui.sheet = h; render(); } });
 
